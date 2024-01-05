@@ -13,10 +13,11 @@ def get_node_info():
         return None
 
     # 解析 JSON 输出
-    node_info = json.loads(result.stdout)
+    nodes_json_info = json.loads(result.stdout)
+    nodes_map = {}
 
     # 提取所需信息并打印
-    for item in node_info.get("items", []):
+    for item in nodes_json_info.get("items", []):
         name = item.get("metadata", {}).get("name", "")
         labels = item.get("metadata", {}).get("labels", {})
         is_master = "node-role.kubernetes.io/master" in labels
@@ -31,7 +32,13 @@ def get_node_info():
         zone = labels.get("topology.jdos.io/zone", "")
         rack = labels.get("topology.jdos.io/rack", "")
 
+        node_item = {"name": name, "roles": {', '.join(roles)}, "scheduler_zone": scheduler_zone, "zone": zone, "rack": rack}
+        nodes_map[name] = node_item
+
         print(f"Name: {name}, Roles: {', '.join(roles)}, Scheduler Zone: {scheduler_zone}, Zone: {zone}, Rack: {rack}")
+
+    for key, node_item in nodes_map.items():
+        print(f"Name: {node_item.name}, Roles: {node_item.roles}, Scheduler Zone: {node_item.scheduler_zone}, Zone: {node_item.zone}, Rack: {node_item.rack}")
 
 if __name__ == "__main__":
     get_node_info()

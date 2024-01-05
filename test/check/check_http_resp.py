@@ -5,6 +5,7 @@ import time
 import json
 from test.config.config import *
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 headers = {
     'authority': test_domain,
@@ -22,9 +23,41 @@ headers = {
     'x-csrf-token': 'B3FylYfWJxPTnZPTAbGVgOHb',
 }
 
-def make_request():
+def make_go_request():
     # 设置 verify 参数为 False 以忽略 HTTPS 证书验证
-    url = test_domain + '/bizApi/backManage/menu/uas/user/auth/tree?platformCode=omPlatform'
+    url = test_domain + '/go'
+    try:
+        response = requests.post()
+        response_json = response.json()
+    except requests.exceptions.Timeout:
+        # 处理超时异常
+        print("Error: make_go_request timed out.")
+        response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_go_request occur exception.")
+        response_json = {}
+    return response_json
+
+# {
+#     "data": {
+#         "checksum": 0,
+#         "created": 1704454912106,
+#         "createdDate": "2024-01-05 19:41:52.106",
+#         "expires": 0,
+#         "expiresDate": "1970-01-01 08:00:00",
+#         "login": true,
+#         "nick": "admin",
+#         "persistent": false,
+#         "pin": "admin",
+#         "userId": 0
+#     },
+#     "errorCode": 0,
+#     "success": true
+# }
+def make_user_info_request():
+    # 设置 verify 参数为 False 以忽略 HTTPS 证书验证
+    url = test_domain + '/bizApi/backManage/user/info?_t=1704454911942'
     try:
         response = requests.get(url, headers=headers, timeout=5, verify=False)
         response_json = response.json()
@@ -32,7 +65,114 @@ def make_request():
         # 处理超时异常
         print("Error: uas_auth_tree Request timed out.")
         response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_user_info_request occur exception.")
+        response_json = {}
     return response_json
+
+
+# {
+#     "data": [
+#         {
+#             "createTime": "2023-08-23 19:38:28",
+#             "id": 11,
+#             "platformCode": "overview",
+#             "platformName": "概览",
+#             "rank": 1,
+#             "status": 1,
+#             "updateTime": "2023-08-25 10:06:19"
+#         },
+#         {
+#             "createTime": "2022-12-21 14:55:50",
+#             "icon": "",
+#             "id": 8,
+#             "platformCode": "jdcloud",
+#             "platformName": "运营管理",
+#             "rank": 2,
+#             "status": 1,
+#             "updateTime": "2023-08-25 10:06:30"
+#         },
+#         {
+#             "createTime": "2023-08-23 19:38:43",
+#             "id": 10,
+#             "platformCode": "omPlatform",
+#             "platformName": "平台运维",
+#             "rank": 4,
+#             "status": 1,
+#             "updateTime": "2023-11-17 17:30:55"
+#         },
+#         {
+#             "createTime": "2023-08-23 19:38:58",
+#             "id": 9,
+#             "platformCode": "omMiddle",
+#             "platformName": "运维中台",
+#             "rank": 5,
+#             "status": 1,
+#             "updateTime": "2023-08-23 19:38:58"
+#         },
+#         {
+#             "createTime": "2023-12-12 10:25:42",
+#             "id": 12,
+#             "platformCode": "systemconfig",
+#             "platformName": "系统配置",
+#             "rank": 7,
+#             "status": 1,
+#             "updateTime": "2023-12-12 10:25:42"
+#         }
+#     ],
+#     "errorCode": 0,
+#     "success": true
+# }
+def make_company_list_request():
+    # 设置 verify 参数为 False 以忽略 HTTPS 证书验证
+    url = test_domain + '/bizApi/backManage/menu/uas/platform/company/list?_t=1704454911942'
+    try:
+        response = requests.get(url, headers=headers, timeout=10, verify=False)
+        response_json = response.json()
+    except requests.exceptions.Timeout:
+        # 处理超时异常
+        print("Error: make_company_list_request timed out.")
+        response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_company_list_request occur exception.")
+        response_json = {}
+    return response_json
+
+# describeMicroApps
+def make_describe_microapps_request():
+    # 设置 verify 参数为 False 以忽略 HTTPS 证书验证
+    url = test_domain + '/openApi/cvesselcore/describeMicroApps?_t=1704454911943'
+    try:
+        response = requests.get(url, headers=headers, timeout=10, verify=False)
+        response_json = response.json()
+    except requests.exceptions.Timeout:
+        # 处理超时异常
+        print("Error: make_describe_microapps_request timed out.")
+        response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_describe_microapps_request occur exception.")
+        response_json = {}
+    return response_json
+
+def make_uas_auth_tree_request():
+    # 设置 verify 参数为 False 以忽略 HTTPS 证书验证
+    url = test_domain + '/bizApi/backManage/menu/uas/user/auth/tree?platformCode=omPlatform'
+    try:
+        response = requests.get(url, headers=headers, timeout=10, verify=False)
+        response_json = response.json()
+    except requests.exceptions.Timeout:
+        # 处理超时异常
+        print("Error: make_uas_auth_tree_request timed out.")
+        response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_uas_auth_tree_request occur exception.")
+        response_json = {}
+    return response_json
+
 
 def make_etcd_describe_request():
     # 设置 verify 参数为 False 以忽略 HTTPS 证书验证
@@ -43,7 +183,27 @@ def make_etcd_describe_request():
         # print(f"{response_json}")
     except requests.exceptions.Timeout:
         # 处理超时异常
-        print("Error: etcd_describe Request timed out.")
+        print("Error: make_etcd_describe_request Request timed out.")
+        response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_etcd_describe_request occur exception.")
+        response_json = {}
+    return response_json
+
+def make_es_describe_request():
+    # 设置 verify 参数为 False 以忽略 HTTPS 证书验证
+    url = test_domain + '/yunjian_console_es_runtime/openApi/es/describeInstances?_t=1704439838435&params=%7B%22filters%22:[%7B%22name%22:%22instanceName%22,%22values%22:[]%7D,%7B%22name%22:%22instanceId%22,%22values%22:[]%7D,%7B%22name%22:%22instanceStatus%22,%22values%22:[]%7D,%7B%22name%22:%22chargeMode%22,%22values%22:[]%7D,%7B%22name%22:%22azId%22,%22values%22:[]%7D,%7B%22name%22:%22clusterType%22,%22values%22:[]%7D],%22pageNumber%22:1,%22pageSize%22:10%7D&regionId=cn-north-1'
+    try:
+        response = requests.get(url, headers=headers, timeout=45, verify=False)
+        response_json = response.json()
+    except requests.exceptions.Timeout:
+        # 处理超时异常
+        print("Error: make_es_describe_request Request timed out.")
+        response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_es_describe_request occur exception.")
         response_json = {}
     return response_json
 
@@ -55,7 +215,11 @@ def make_kafka_describe_request():
         response_json = response.json()
     except requests.exceptions.Timeout:
         # 处理超时异常
-        print("Error: etcd_describe Request timed out.")
+        print("Error: make_kafka_describe_request Request timed out.")
+        response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_kafka_describe_request occur exception.")
         response_json = {}
     return response_json
 
@@ -67,7 +231,11 @@ def make_zookeeper_describe_request():
         response_json = response.json()
     except requests.exceptions.Timeout:
         # 处理超时异常
-        print("Error: etcd_describe Request timed out.")
+        print("Error: make_kafka_describe_request Request timed out.")
+        response_json = {}
+    except requests.exceptions.RequestException as err:
+        # 处理超时异常
+        print("Error: make_kafka_describe_request occur exception.")
         response_json = {}
     return response_json
 
@@ -143,7 +311,7 @@ def check_response(response_content):
             return True
 
 def execute_request_and_check(executor, make_request_func, check_response_func, *args):
-    start_time = time.time()
+    start_time = datetime.now()
 
     # 判断 JSON 对象是否不为空
     # args 是一个元组，包含了所有动态传入的参数
@@ -165,26 +333,32 @@ def execute_request_and_check(executor, make_request_func, check_response_func, 
         time.sleep(5)
         times = times + 1
 
-    end_time = time.time()
-    total_time = end_time - start_time
-    return total_time
+    # 计算时间差
+    end_time = datetime.now()
+    # 打印格式化后的时间
+    print(f"[{origin}] start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}, end time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    time_difference = end_time - start_time
+    return time_difference
 
 
 if __name__ == "__main__":
     with ThreadPoolExecutor(max_workers=10) as executor:
-        # 并发发起两个请求
-        future_uas_auth_tree = executor.submit(execute_request_and_check, executor, make_request, check_response)
+        # 并发发起请求
+        future_uas_auth_tree = executor.submit(execute_request_and_check, executor, make_uas_auth_tree_request, check_response)
         future_etcd_list = executor.submit(execute_request_and_check, executor, make_etcd_describe_request, check_response_struct_is_right, "etcd_list")
+        future_es_list = executor.submit(execute_request_and_check, executor, make_es_describe_request, check_response_struct_is_right, "es_list")
         future_kafka_list = executor.submit(execute_request_and_check, executor, make_kafka_describe_request, check_response_struct_is_right, "kafka_list")
         future_zookeeper_list = executor.submit(execute_request_and_check, executor, make_zookeeper_describe_request, check_response_struct_is_right, "zookeeper_list")
 
-        # 等待并获取两个请求的结果
+        # 等待并获取请求的结果
         total_time_uas_auth_tree = future_uas_auth_tree.result()
+        total_time_es_list = future_es_list.result()
         total_time_kafka_list = future_kafka_list.result()
         total_time_etcd_list = future_etcd_list.result()
         total_time_zookeeper_list = future_zookeeper_list.result()
 
-    print(f"[uas_auth_tree] Request Total Time: {total_time_uas_auth_tree:.2f} seconds")
-    print(f"[etcd_list] Request Total Time: {total_time_etcd_list:.2f} seconds")
-    print(f"[zookeeper_list] Request Total Time: {total_time_zookeeper_list:.2f} seconds")
-    print(f"[kafka_list] Request Total Time: {total_time_kafka_list:.2f} seconds")
+    print(f"[uas_auth_tree] Request Total Time: {round(total_time_uas_auth_tree.total_seconds(), 2) } seconds")
+    print(f"[etcd_list] Request Total Time: {round(total_time_etcd_list.total_seconds(), 2)} seconds")
+    print(f"[zookeeper_list] Request Total Time: {round(total_time_zookeeper_list.total_seconds(), 2) } seconds")
+    print(f"[es_list] Request Total Time: {round(total_time_es_list.total_seconds(), 2)} seconds")
+    print(f"[kafka_list] Request Total Time: {round(total_time_kafka_list.total_seconds(), 2)} seconds")
