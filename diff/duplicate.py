@@ -1,4 +1,6 @@
 import csv
+import os
+
 
 def check_duplicate_file_names(csv_file):
     file_names = set()
@@ -18,7 +20,17 @@ def check_duplicate_file_names(csv_file):
     return duplicate_names
 
 if __name__ == "__main__":
-    csv_file = "/Users/chenwenming10/workspace/garnettcwm/common-scripts/diff/jdpan-image.csv"  # Replace with the path to your CSV file
+    current_directory = os.getcwd()
+    print(current_directory)
+
+    script_directory = os.path.dirname(os.path.abspath(__file__))
+    # 物料相对于当前py文件的位置
+    relative_path = os.path.join('../test/materials')
+    # 获取物料的目录路径
+    materials_absolute_path = os.path.abspath(os.path.join(script_directory, relative_path))
+    print(materials_absolute_path)
+
+    csv_file = os.path.abspath(os.path.join(materials_absolute_path, "diff/jdpan-image.csv"))
     duplicates = check_duplicate_file_names(csv_file)
 
     if duplicates:
