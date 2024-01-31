@@ -807,9 +807,10 @@ def check_mongodb_topology():
 
         # 获取mongodb集群类型
         mongodb_sharding_cfg = mongodb_cluster.get("spec", {}).get("sharding", {})
-        mongodb_type = "replication"
-        if mongodb_sharding_cfg != {}:
-            mongodb_type = "sharding"
+        mongodb_type = "sharding"
+        # 如果sharding配置为空 或 sharding.enabled=false, 则表示副本组模式
+        if mongodb_sharding_cfg == {} or mongodb_sharding_cfg.get("enabled") is False:
+            mongodb_type = "replication"
 
         print(f"Info: check mongodb {instance_name} topology started, mongodb_type: {mongodb_type}")
 
