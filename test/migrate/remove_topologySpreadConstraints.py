@@ -113,12 +113,13 @@ def main():
     else:
         print(f"{DRY_RUN} 2")
 
-    whitelist_ns = ["mysql", "mongo-cvessel", "tpaas-es", "tpaas-kafka", "digger-kafka", "redis", "tpaas-etcd", "tpaas-zk"]
+    ns_prefix_whitelist = ["mysql", "pg-", "tpaas-mongodb", "mongo-", "ck-", "tpaas-es", "tpaas-kafka", "digger-kafka", "kafka-", "redis", "tpaas-etcd", "hips-etcd", "tpaas-zk", "zk-"]
     whitelist = [("excluded_namespace1", "excluded_workload1"), ("excluded_namespace2", "excluded_workload2")]
     all_namespaces = get_all_namespaces()
 
     for namespace in all_namespaces:
-        if namespace in whitelist_ns:
+        # 检查命名空间是否不在白名单中
+        if any(namespace.startswith(namespace_prefix) for namespace_prefix in ns_prefix_whitelist):
             print(f"Skipping {namespace} due to whitelist.")
             continue
 
