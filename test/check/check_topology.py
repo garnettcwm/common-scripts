@@ -17,6 +17,8 @@ PAAS_SCOPE_RUNTIME = "runtime"
 PAAS_SCOPE_LIST = [PAAS_SCOPE_ALL, PAAS_SCOPE_TENANT, PAAS_SCOPE_RUNTIME]
 PAAS_SCOPE = PAAS_SCOPE_ALL
 
+# 全局变量，用于缓存 CRD 数据
+GLOBAL_CACHED_CRD_NAMES = None
 
 def is_paas_tenant_included():
     if PAAS_SCOPE == PAAS_SCOPE_ALL or PAAS_SCOPE_ALL ==  PAAS_SCOPE_TENANT:
@@ -49,9 +51,44 @@ def get_pods_with_labels(label_selector, namespace="all"):
     pods_info = json.loads(result.stdout)
     return pods_info.get("items", [])
 
-def get_cr_by_kind(cr_kind, namespace="all"):
+
+def get_all_crds_names():
+    global GLOBAL_CACHED_CRD_NAMES
+    try:
+        # 获取所有CRD的JSON数据
+        cmd = f"kubectl get crd -o json"
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # 解析 JSON 数据
+        crds_data = json.loads(result.stdout)
+
+        # 缓存数据
+        GLOBAL_CACHED_CRD_NAMES = [crd["metadata"]["name"] for crd in crds_data.get("items", [])]
+    except subprocess.CalledProcessError:
+        # 如果命令返回非零状态码，则忽略错误，保持缓存不变
+        pass
+
+
+def check_crd_existence(crd_name):
+    global GLOBAL_CACHED_CRD_NAMES
+    if GLOBAL_CACHED_CRD_NAMES is None:
+        # 如果缓存为空，则获取所有 CRD 数据
+        print(f"Info: GLOBAL_CACHED_CRD_NAMES is None, cached from server")
+        get_all_crds_names()
+
+    # 本地过滤，检查是否存在指定名称的 CRD
+    exists = crd_name in GLOBAL_CACHED_CRD_NAMES
+    return exists
+
+
+def get_cr_by_crd_name(crd_name, namespace="all"):
+    is_crd_exists = check_crd_existence(crd_name)
+    if not is_crd_exists:
+        print(f"Info: {crd_name} isn't installed, skip it")
+        return []
+
     # 获取符合标签筛选条件的 Pod 列表
-    cmd = f"kubectl get {cr_kind} -o json "
+    cmd = f"kubectl get {crd_name} -o json "
     if namespace == "all":
         cmd += f" --all-namespaces=true "
     else:
@@ -68,9 +105,9 @@ def get_cr_by_kind(cr_kind, namespace="all"):
     pods_info = json.loads(result.stdout)
     return pods_info.get("items", [])
 
-def get_cr_by_name(cr_kind, cr_name, namespace="all"):
+def get_cr_by_name(crd_name, cr_name, namespace="all"):
     # 获取符合标签筛选条件的 Pod 列表
-    cmd = f"kubectl get {cr_kind} {cr_name} -o json "
+    cmd = f"kubectl get {crd_name} {cr_name} -o json "
     if namespace == "all":
         cmd += f" --all-namespaces=true "
     else:
@@ -303,7 +340,7 @@ def get_kafka_instance():
     #         "instance_name": "digger-kafka"
     #     }]
     instances = []
-    kafka_list = get_cr_by_kind("kafka")
+    kafka_list = get_cr_by_crd_name("kafkas.kafka.strimzi.io")
     for kafka in kafka_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
@@ -325,7 +362,7 @@ def check_redis_topology():
         # redis.jdcloud.com/shard=shard-0
         namespace = instance.get("namespace")
         instance_name = instance.get("instance_name")
-        rediscluster = get_cr_by_name("rediscluster", instance_name, namespace)
+        rediscluster = get_cr_by_name("redisclusters.redis.jdcloud.com", instance_name, namespace)
         if rediscluster is None or rediscluster == {}:
             print(f"Error: get rediscluster {instance_name} failed")
             return
@@ -364,7 +401,7 @@ def get_redis_instance():
     #         "instance_name": "digger-rediscluster"
     #     }]
     instances = []
-    kafka_list = get_cr_by_kind("rediscluster")
+    kafka_list = get_cr_by_crd_name("redisclusters.redis.jdcloud.com")
     for kafka in kafka_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
@@ -626,7 +663,7 @@ def get_es_instance():
     #         "instance_name": "stardb-tpaas-es",
     #     }]
     instances = []
-    kafka_list = get_cr_by_kind("elasticsearch")
+    kafka_list = get_cr_by_crd_name("elasticsearches.es.jdcloud.com")
     for kafka in kafka_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
@@ -674,7 +711,7 @@ def get_etcd_instance():
     #         "instance_name": "hips-etcd"
     #     }]
     instances = []
-    kafka_list = get_cr_by_kind("etcdcluster")
+    kafka_list = get_cr_by_crd_name("etcdclusters.middleware.jdcloud.com")
     for kafka in kafka_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
@@ -718,7 +755,7 @@ def get_zookeeper_instance():
     #         "instance_name": "tpaas-zookeeper"
     #     }]
     instances = []
-    kafka_list = get_cr_by_kind("zookeepercluster")
+    kafka_list = get_cr_by_crd_name("zookeeperclusters.middleware.jdcloud.com")
     for kafka in kafka_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
@@ -782,7 +819,61 @@ def get_mysql_instance():
     #         "instance_name": "digger-mysql-cluster",
     #     }]
     instances = []
-    kafka_list = get_cr_by_kind("mysqlcluster")
+    kafka_list = get_cr_by_crd_name("mysqlclusters.mysql.presslabs.org")
+    for kafka in kafka_list:
+        instance_name = kafka.get("metadata", {}).get("name", "")
+        instance_namespace = kafka.get("metadata", {}).get("namespace", "")
+
+        instances.append({
+            "namespace": instance_namespace,
+            "instance_name": instance_name
+        })
+    return instances
+
+def check_postgresql_topology():
+    print(f"Info: check postgresql topology started")
+    instances = get_postgresql_instance()
+    for instance in instances:
+        # role: master   role: master
+        namespace = instance.get("namespace")
+        instance_name = instance.get("instance_name")
+        print(f"Info: check postgresql {instance_name} topology started")
+        label_selector_all = f"app.kubernetes.io/name=postgres,app.kubernetes.io/instance={instance_name}"
+        label_selector_master = f"{label_selector_all},role=master"
+        label_selector_node = f"{label_selector_all},role=replica"
+        pods_postgresql_all = get_pods_with_labels(label_selector_all, namespace)
+        pods_postgresql_master = get_pods_with_labels(label_selector_master, namespace)
+        pods_postgresql_replica = get_pods_with_labels(label_selector_node, namespace)
+
+        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+            # master、replica分布在不同AZ
+            constraints_satisfied, error_info, error_info2, topology_key = check_topology_not_intersection_constraints(pods_postgresql_master, pods_postgresql_replica, TOPOLOGY_KEY_ZONE)
+            if not constraints_satisfied:
+                print(f"Error: Topology intersection constraint violation! {error_info}. {error_info2}. topology_key: {topology_key}")
+
+            # master节点必须位于非仲裁区
+            required_scheduler_zone_labels = ["topology.jdos.io/scheduler-zone"]
+            constraints_satisfied, error_info, required_labels_info, selector_info = check_node_required_labels_constraints(pods_postgresql_master, required_scheduler_zone_labels, label_selector_master)
+            if not constraints_satisfied:
+                print(f"Error: Node labels constraint violation! {error_info} contains required label {required_labels_info}. Label Selector: {selector_info}")
+
+            # replica必须位于非仲裁区
+            constraints_satisfied, error_info, required_labels_info, selector_info = check_node_required_labels_constraints(pods_postgresql_replica, required_scheduler_zone_labels, label_selector_node)
+            if not constraints_satisfied:
+                print(f"Error: Node labels constraint violation! {error_info} contains required label {required_labels_info}. Label Selector: {selector_info}")
+
+        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+            # 所有节点不能在同一rack
+            constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_postgresql_all, TOPOLOGY_KEY_RACK, label_selector_all)
+            if not constraints_satisfied:
+                print(f"Error: {constraint_topology_key} constraint violation! {error_info}. Label Selector: {selector_info}")
+
+    print(f"Info: check postgresql topology finished")
+
+
+def get_postgresql_instance():
+    instances = []
+    kafka_list = get_cr_by_crd_name("pgclusters.crunchydata.com")
     for kafka in kafka_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
@@ -800,7 +891,7 @@ def check_mongodb_topology():
     for instance in instances:
         namespace = instance.get("namespace")
         instance_name = instance.get("instance_name")
-        mongodb_cluster = get_cr_by_name("perconaservermongodb", instance_name, namespace)
+        mongodb_cluster = get_cr_by_name("perconaservermongodbs.psmdb.percona.com", instance_name, namespace)
         if mongodb_cluster is None or mongodb_cluster == {}:
             print(f"Error: get perconaservermongodb {instance_name} failed")
             return
@@ -906,7 +997,7 @@ def get_mongodb_instance():
     #         "instance_name": "mongo-cvessel"
     #     }]
     instances = []
-    kafka_list = get_cr_by_kind("perconaservermongodb")
+    kafka_list = get_cr_by_crd_name("perconaservermongodbs.psmdb.percona.com")
     for kafka in kafka_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
@@ -988,7 +1079,7 @@ def get_clickhouse_instance():
     #         "instance_name": "ck-themis"
     #     }]
     instances = []
-    kafka_list = get_cr_by_kind("clickhouseinstallation")
+    kafka_list = get_cr_by_crd_name("clickhouseinstallations.clickhouse.altinity.com")
     for kafka in kafka_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
@@ -1020,26 +1111,29 @@ if __name__ == "__main__":
             print(f"Error: the passed-in parameter paas-scope [{PAAS_SCOPE}] is invalid, The supported values are {PAAS_SCOPE_LIST}")
             exit(1)
 
-    # 检查runtime kafka topology
+    # 检查kafka topology
     check_kafka_topology()
 
-    # 检查runtime redis topology
+    # 检查redis topology
     check_redis_topology()
 
-    # 检查runtime es topology
+    # 检查es topology
     check_es_topology()
 
-    # 检查runtime etcd topology
+    # 检查etcd topology
     check_etcd_topology()
 
-    # 检查runtime zookeeper topology
+    # 检查zookeeper topology
     check_zookeeper_topology()
 
-    # 检查runtime mysql topology
+    # 检查mysql topology
     check_mysql_topology()
 
-    # 检查runtime mongodb topology
+    # 检查postgresql topology
+    check_postgresql_topology()
+
+    # 检查mongodb topology
     check_mongodb_topology()
 
-    # 检查runtime clickhouse topology
+    # 检查clickhouse topology
     check_clickhouse_topology()
