@@ -55,10 +55,12 @@ def remove_topology_constraints(namespace, resource_type):
     for resource in resources:
         if resource["spec"].get("template", {}).get("spec", {}).get("topologySpreadConstraints"):
             # 删除 topologySpreadConstraints
-            if not DRY_RUN:
+            if DRY_RUN is True:
+                print(f"--dry-run Removed topologySpreadConstraints for {resource_type} - {resource['metadata']['name']}")
+            else:
                 run_command(f"kubectl patch {resource_type} --namespace={namespace} {resource['metadata']['name']} --type=json -p="
                             f"'[{{\"op\":\"remove\", \"path\":\"/spec/template/spec/topologySpreadConstraints\"}}]'")
-            print(f"Removed topologySpreadConstraints for {resource_type} - {resource['metadata']['name']}")
+                print(f"Removed topologySpreadConstraints for {resource_type} - {resource['metadata']['name']}")
 
 
 def backup_and_remove_topology_constraints(namespace, resource_type):
@@ -80,10 +82,12 @@ def backup_and_remove_topology_constraints(namespace, resource_type):
             print(f"Backup created for {namespace} {resource_type} - {resource['metadata']['name']}")
 
             # 删除 topologySpreadConstraints
-            if not DRY_RUN:
+            if DRY_RUN is True:
+                print(f"--dry-run Removed topologySpreadConstraints for {resource_type} - {resource['metadata']['name']}")
+            else:
                 run_command(f"kubectl patch {resource_type} --namespace={namespace} {resource['metadata']['name']} --type=json -p="
                             f"'[{{\"op\":\"remove\", \"path\":\"/spec/template/spec/topologySpreadConstraints\"}}]'")
-            print(f"Removed topologySpreadConstraints for {resource_type} - {resource['metadata']['name']}")
+                print(f"Removed topologySpreadConstraints for {resource_type} - {resource['metadata']['name']}")
 
 
 def get_all_namespaces():
@@ -99,7 +103,7 @@ def get_all_namespaces():
         return []
 
 
-def main():
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='A script with command line arguments.')
     parser.add_argument('--dry-run', action='store_true', help='simulate an migrate')
     args = parser.parse_args()
@@ -130,7 +134,3 @@ def main():
 
         # 备份和删除 StatefulSet
         backup_and_remove_topology_constraints(namespace, "StatefulSet")
-
-
-if __name__ == "__main__":
-    main()

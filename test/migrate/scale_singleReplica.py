@@ -30,8 +30,15 @@ def backup_yaml(resource_type, resource_name, namespace):
 
 
 def adjust_replica_count(resource_type, resource_name, namespace, new_replica_count):
-    cmd = f"kubectl scale {resource_type} {resource_name} --replicas={new_replica_count} -n {namespace}"
-    if not DRY_RUN:
+    if DRY_RUN:
+        print(f"{DRY_RUN} 1")
+    else:
+        print(f"{DRY_RUN} 2")
+
+    if DRY_RUN is True:
+        print(f"--dry-run  Successfully adjusted replicas for {resource_type} {resource_name} in namespace {namespace}")
+    else:
+        cmd = f"kubectl scale {resource_type} {resource_name} --replicas={new_replica_count} -n {namespace}"
         process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    universal_newlines=True)
         process.communicate()
@@ -40,8 +47,7 @@ def adjust_replica_count(resource_type, resource_name, namespace, new_replica_co
             print(f"Successfully adjusted replicas for {resource_type} {resource_name} in namespace {namespace}")
         else:
             print(f"Error adjusting replicas for {resource_type} {resource_name} in namespace {namespace}")
-    else:
-        print(f"Successfully adjusted replicas for {resource_type} {resource_name} in namespace {namespace}")
+
 
 
 def get_all_namespaces():
@@ -56,8 +62,7 @@ def get_all_namespaces():
         print(f"Error output: {stderr}")
         return []
 
-
-def main():
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='A script with command line arguments.')
     parser.add_argument('--dry-run', action='store_true', help='simulate an migrate')
     args = parser.parse_args()
@@ -75,15 +80,19 @@ def main():
     # StatefulSet namespace前缀白名单
     ns_prefix_whitelist = ["tpaas-rds", "mysql", "pg-", "tpaas-mongodb", "mongo-", "ck-", "tpaas-es", "tpaas-kafka",
                            "digger-kafka", "kafka-", "redis", "tpaas-etcd", "hips-etcd", "tpaas-zk", "zk-",
-                           "bastion-ops", "jd-bomp"]
+                           "bastion-ops", "jd-bomp", "archimedes", "brolly"]
     """
     1、tpaas-operator、tpaas-cluster-proxy目前只能单点
     2、cassandra为sgm提供服务，数量为1、或3
     3、digger k8s-watch、loki-compactor、loki-frontend-leader比较特殊，只能启动一个
+    4、3.6以前, opencloud-core-operator只能启动一个
+    5、
     """
     whitelist = [("jd-tpaas", "tpaas-operator"), ("jd-tpaas", "tpaas-cluster-proxy"), ("jdd-paas", "uas-k8s-watch"), ("jdd-paas", "cassandra"),
                  ("digger", "digger-k8s-watch"), ("digger", "digger-master-loki-compactor"), ("digger", "digger-master-loki-frontend-leader"),
-                 ("kube-system", "dns-autoscaler"), ("gatekeeper-system", "gatekeeper-audit"), ("magicflow", "magicflow"), ("opencloud", "finops"), ("store-managed", "jdock-install-job")]
+                 ("tpaas-federation", "kubefed-admission-webhook"), ("store-managed", "jdock-install-job"),
+                 ("kube-system", "dns-autoscaler"), ("gatekeeper-system", "gatekeeper-audit"), ("magicflow", "magicflow"),
+                 ("opencloud", "finops"), ("opencloud", "opencloud-core-operator"), ("jd-tpaas", "ops"), ("jd-tpaas", "scan-redis"), ("", ""), ]
     all_namespaces = get_all_namespaces()
     for namespace in all_namespaces:
         # 检查命名空间是否不在白名单中
@@ -109,7 +118,3 @@ def main():
             else:
                 print(f"Error querying {resource_type} in namespace {namespace}")
                 print(f"Error output: {stderr}")
-
-
-if __name__ == "__main__":
-    main()
