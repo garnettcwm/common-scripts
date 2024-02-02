@@ -70,16 +70,20 @@ def get_all_statefulsets(namespace="default"):
 
 def trigger_rolling_restart_deployment(deployment, namespace="default"):
     command = f"kubectl rollout restart deployment {deployment} --namespace={namespace}"
-    if not DRY_RUN:
+    if DRY_RUN is True:
+        print(f"Info: --dry-run Rolling restart deployment {deployment} in namespace:{namespace} success")
+    else:
         run_command_exit_if_err(command)
-    print(f"Info: Rolling restart deployment {deployment} in namespace:{namespace} success")
+        print(f"Info: Rolling restart deployment {deployment} in namespace:{namespace} success")
 
 
 def trigger_rolling_restart_statefulset(statefulset_name, namespace="default"):
     command = f"kubectl rollout restart statefulset {statefulset_name} --namespace={namespace}"
-    if not DRY_RUN:
+    if DRY_RUN is True:
+        print(f"Info: --dry-run Rolling restart statefulset {statefulset_name} in namespace:{namespace} success")
+    else:
         run_command_exit_if_err(command)
-    print(f"Info: Rolling restart statefulset {statefulset_name} in namespace:{namespace} success")
+        print(f"Info: Rolling restart statefulset {statefulset_name} in namespace:{namespace} success")
 
 
 if __name__ == "__main__":
@@ -119,16 +123,20 @@ if __name__ == "__main__":
         """
         处理StatefulSet相关逻辑
         """
-        statefulsets = get_all_statefulsets(namespace)
-        for statefulset in statefulsets:
-            pvc_list = statefulset.get("spec", {}).get("volumeClaimTemplates", [])
-            if not pvc_list:
-                # 没有 PVC 的 StatefulSet
-                statefulsets_without_pvc.append((namespace, statefulset["metadata"]["name"]))
-                trigger_rolling_restart_statefulset(statefulset["metadata"]["name"], namespace)
-            else:
-                # 有 PVC 的 StatefulSet
-                statefulsets_with_pvc.append((namespace, statefulset["metadata"]["name"]))
+        try:
+            statefulsets = get_all_statefulsets(namespace)
+            for statefulset in statefulsets:
+                pvc_list = statefulset.get("spec", {}).get("volumeClaimTemplates", [])
+                if not pvc_list:
+                    # 没有 PVC 的 StatefulSet
+                    statefulsets_without_pvc.append((namespace, statefulset["metadata"]["name"]))
+                    trigger_rolling_restart_statefulset(statefulset["metadata"]["name"], namespace)
+                else:
+                    # 有 PVC 的 StatefulSet
+                    statefulsets_with_pvc.append((namespace, statefulset["metadata"]["name"]))
+            print("Rolling restart triggered for all Deployments in namespace:", namespace)
+        except Exception as e:
+            print(f"Error: {e}")
 
     """
     打印含pvc的StatefulSet，需人工接入处理
