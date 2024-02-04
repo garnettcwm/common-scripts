@@ -20,14 +20,15 @@ PAAS_SCOPE = PAAS_SCOPE_ALL
 # 全局变量，用于缓存 CRD 数据
 GLOBAL_CACHED_CRD_NAMES = None
 
+
 def is_paas_tenant_included():
-    if PAAS_SCOPE == PAAS_SCOPE_ALL or PAAS_SCOPE_ALL ==  PAAS_SCOPE_TENANT:
+    if PAAS_SCOPE == PAAS_SCOPE_ALL or PAAS_SCOPE_ALL == PAAS_SCOPE_TENANT:
         return True
     return False
 
 
 def is_paas_runtime_included():
-    if PAAS_SCOPE == PAAS_SCOPE_ALL or PAAS_SCOPE_ALL ==  PAAS_SCOPE_RUNTIME:
+    if PAAS_SCOPE == PAAS_SCOPE_ALL or PAAS_SCOPE_ALL == PAAS_SCOPE_RUNTIME:
         return True
     return False
 
@@ -39,12 +40,11 @@ def get_pods_with_labels(label_selector, namespace="all"):
         cmd += f" --all-namespaces=true "
     else:
         cmd += f" --namespace={namespace} "
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # 检查命令是否执行成功
     if result.returncode != 0:
-        print(f"Error executing kubectl command: {cmd}")
-        print(result.stderr)
+        print(f"Error executing kubectl command: {cmd}, error:{result.stderr}")
         return None
 
     # 解析 JSON 输出
@@ -57,7 +57,7 @@ def get_all_crds_names():
     try:
         # 获取所有CRD的JSON数据
         cmd = f"kubectl get crd -o json"
-        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         # 解析 JSON 数据
         crds_data = json.loads(result.stdout)
@@ -93,17 +93,17 @@ def get_cr_by_crd_name(crd_name, namespace="all"):
         cmd += f" --all-namespaces=true "
     else:
         cmd += f" --namespace={namespace} "
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # 检查命令是否执行成功
     if result.returncode != 0:
-        print(f"Error executing kubectl command: {cmd}")
-        print(result.stderr)
+        print(f"Error executing kubectl command: {cmd}, error: {result.stderr}")
         return None
 
     # 解析 JSON 输出
     pods_info = json.loads(result.stdout)
     return pods_info.get("items", [])
+
 
 def get_cr_by_name(crd_name, cr_name, namespace="all"):
     # 获取符合标签筛选条件的 Pod 列表
@@ -112,12 +112,11 @@ def get_cr_by_name(crd_name, cr_name, namespace="all"):
         cmd += f" --all-namespaces=true "
     else:
         cmd += f" --namespace={namespace} "
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # 检查命令是否执行成功
     if result.returncode != 0:
-        print(f"Error executing kubectl command: {cmd}")
-        print(result.stderr)
+        print(f"Error executing kubectl command: {cmd}, error: {result.stderr}")
         return None
 
     # 解析 JSON 输出
@@ -132,12 +131,11 @@ def get_group_labelvalue(label_selector, group_label_key, namespace="all"):
         cmd += f" --all-namespaces=true "
     else:
         cmd += f" --namespace={namespace} "
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # 检查命令是否执行成功
     if result.returncode != 0:
-        print("Error executing kubectl command:")
-        print(result.stderr)
+        print(f"Error executing kubectl command: {cmd}, error:{result.stderr}")
         return None
 
     # 解析 JSON 输出
@@ -166,7 +164,7 @@ def check_topology_constraints(pods, constraint_topology_key, label_selector):
     racks = set()
     for pod in pods:
         node_name = pod.get("spec", {}).get("nodeName", "")
-        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         labels = json.loads(labels.stdout).get("metadata", {}).get("labels", {})
         rack = labels.get(constraint_topology_key, "")
         if rack in racks:
@@ -184,14 +182,14 @@ def check_topology_not_intersection_constraints(pods1, pods2, constraint_topolog
     topology_values2 = set()
     for pod in pods1:
         node_name = pod.get("spec", {}).get("nodeName", "")
-        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         labels = json.loads(labels.stdout).get("metadata", {}).get("labels", {})
         topology_value = labels.get(constraint_topology_key, "")
         topology_values1.add(topology_value)
 
     for pod in pods2:
         node_name = pod.get("spec", {}).get("nodeName", "")
-        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         labels = json.loads(labels.stdout).get("metadata", {}).get("labels", {})
         topology_value = labels.get(constraint_topology_key, "")
         topology_values2.add(topology_value)
@@ -209,7 +207,7 @@ def check_topology_skew_constraints(pods, constraint_topology_key, label_selecto
     node_counts = {}
     for pod in pods:
         node_name = pod.get("spec", {}).get("nodeName", "")
-        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         labels = json.loads(labels.stdout).get("metadata", {}).get("labels", {})
         constraint_value = labels.get(constraint_topology_key, "")
         node_counts[constraint_value] = node_counts.get(constraint_value, 0) + 1
@@ -229,7 +227,7 @@ def check_node_required_labels_constraints(pods, required_labels, label_selector
 
     for pod in pods:
         node_name = pod.get("spec", {}).get("nodeName", "")
-        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         labels = json.loads(labels.stdout).get("metadata", {}).get("labels", {})
 
         # 检查是否包含所有必需的 labels
@@ -246,7 +244,7 @@ def check_node_forbidden_labels_constraints(pods, forbidden_labels, label_select
 
     for pod in pods:
         node_name = pod.get("spec", {}).get("nodeName", "")
-        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        labels = subprocess.run(f"kubectl get node {node_name} -o json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         labels = json.loads(labels.stdout).get("metadata", {}).get("labels", {})
 
         for forbidden_label in forbidden_labels:
@@ -259,12 +257,11 @@ def check_node_forbidden_labels_constraints(pods, forbidden_labels, label_select
 def get_namespaces_with_prefix(prefix):
     # 使用 kubectl 命令获取所有的 namespace 信息
     cmd = "kubectl get namespaces -o json"
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # 检查命令是否执行成功
     if result.returncode != 0:
-        print("Error executing kubectl command:")
-        print(result.stderr)
+        print(f"Error executing kubectl command: {cmd}, error:{result.stderr}")
         return None
 
     # 解析 JSON 输出
@@ -829,6 +826,7 @@ def get_mysql_instance():
             "instance_name": instance_name
         })
     return instances
+
 
 def check_postgresql_topology():
     print(f"Info: check postgresql topology started")
