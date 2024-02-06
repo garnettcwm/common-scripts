@@ -97,7 +97,8 @@ if __name__ == "__main__":
         DRY_RUN = args.dry_run
 
     # StatefulSet namespace前缀白名单
-    sts_ns_prefix_whitelist = ["mysql", "pg-", "tpaas-mongodb", "mongo-", "ck-", "tpaas-es", "tpaas-kafka", "digger-kafka", "kafka-", "redis", "tpaas-etcd", "hips-etcd", "tpaas-zk", "zk-"]
+    sts_ns_prefix_whitelist = ["mysql", "pg-", "tpaas-mongodb", "mongo-", "ck-", "tpaas-es", "tpaas-kafka", "digger-kafka", "kafka-", "redis", "tpaas-etcd", "hips-etcd", "zk-"]
+    sts_prefix_pair_whitelist = [("tpaas-zk", "tpaas-zookeeper-node")]
     # 遍历处理所有namespace
     all_namespaces = get_all_namespaces()
     statefulsets_without_pvc = []
@@ -116,7 +117,7 @@ if __name__ == "__main__":
             for deployment in deployments:
                 trigger_rolling_restart_deployment(deployment, namespace)
 
-            print("Rolling restart triggered for all Deployments in namespace:", namespace)
+            print(f"Info: Rolling restart triggered for all Deployments in namespace: {namespace}")
         except Exception as e:
             print(f"Error: {e}")
 
@@ -134,17 +135,22 @@ if __name__ == "__main__":
                 else:
                     # 有 PVC 的 StatefulSet
                     statefulsets_with_pvc.append((namespace, statefulset["metadata"]["name"]))
-            print("Rolling restart triggered for all Deployments in namespace:", namespace)
+            print(f"Info: Rolling restart triggered for all StatefulSets in namespace: {namespace}")
         except Exception as e:
             print(f"Error: {e}")
 
     """
     打印含pvc的StatefulSet，需人工接入处理
     """
-    print("\n以下StatefulSet含pvc，请人工介入迁移:")
+    print("\nInfo: 以下StatefulSet含pvc，请人工介入迁移:")
     # 遍历具有 PVC 的 StatefulSet 列表
     for namespace, statefulset_name in statefulsets_with_pvc:
         # 检查命名空间是否不在白名单中
-        if not any(namespace.startswith(namespace_prefix) for namespace_prefix in sts_ns_prefix_whitelist):
-            # 如果命名空间不在白名单中，打印相关信息
-            print(f"namespace: {namespace}, statefulset name: {statefulset_name}")
+        if any(namespace.startswith(namespace_prefix) for namespace_prefix in sts_ns_prefix_whitelist):
+            continue
+
+        if any(namespace == sts_prefix_pair[0] and statefulset_name.startswith(sts_prefix_pair[1]) for sts_prefix_pair in sts_prefix_pair_whitelist):
+            # print(f"Info: namespace: {namespace}, statefulset name: {statefulset_name} is in whitelist, skip it")
+            continue
+
+        print(f"namespace: {namespace}, statefulset name: {statefulset_name}")
