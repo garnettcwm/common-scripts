@@ -10,28 +10,8 @@ RACK_LEVEL = "rack"
 HA_TOPOLOGY_LEVEL_LIST = [ZONE_LEVEL, RACK_LEVEL]
 HA_TOPOLOGY_LEVEL = ZONE_LEVEL
 
-# paas scope
-PAAS_SCOPE_ALL = "all"
-PAAS_SCOPE_TENANT = "tenant"
-PAAS_SCOPE_RUNTIME = "runtime"
-PAAS_SCOPE_LIST = [PAAS_SCOPE_ALL, PAAS_SCOPE_TENANT, PAAS_SCOPE_RUNTIME]
-PAAS_SCOPE = PAAS_SCOPE_ALL
-
 # 全局变量，用于缓存 CRD 数据
 GLOBAL_CACHED_CRD_NAMES = None
-
-
-def is_paas_tenant_included():
-    if PAAS_SCOPE == PAAS_SCOPE_ALL or PAAS_SCOPE_ALL == PAAS_SCOPE_TENANT:
-        return True
-    return False
-
-
-def is_paas_runtime_included():
-    if PAAS_SCOPE == PAAS_SCOPE_ALL or PAAS_SCOPE_ALL == PAAS_SCOPE_RUNTIME:
-        return True
-    return False
-
 
 def get_pods_with_labels(label_selector, namespace="all"):
     # 获取符合标签筛选条件的 Pod 列表
@@ -212,11 +192,20 @@ def check_topology_skew_constraints(pods, constraint_topology_key, label_selecto
         constraint_value = labels.get(constraint_topology_key, "")
         node_counts[constraint_value] = node_counts.get(constraint_value, 0) + 1
 
-    max_count = max(node_counts.values())
-    min_count = min(node_counts.values())
-
-    if max_count - min_count > 1:
-        return False, get_pod_info(pods[0]), constraint_topology_key, label_selector
+    constraint_topology_values_num = len(node_counts.keys())
+    if constraint_topology_values_num <= 0:
+        return False, get_pod_info(pod), constraint_topology_key, label_selector
+    elif constraint_topology_values_num == 1:
+        # 如果只有一个constraint_topology_key对应的分类, 则说明所有pods都在一个分类上, count > 1 就说明skew > 1, 不满足倾斜度要求
+        count = max(node_counts.values())
+        if count > 1:
+            return False, get_pod_info(pod), constraint_topology_key, label_selector
+    else:
+        max_count = max(node_counts.values())
+        min_count = min(node_counts.values())
+        # 如果有多个constraint_topology_key对应的分类, 则求最大的 和 最小的"差", 如果"差"超过1, 说明不满足倾斜度要求
+        if max_count - min_count > 1:
+            return False, get_pod_info(pods[0]), constraint_topology_key, label_selector
     return True, None, None, None
 
 
@@ -428,7 +417,7 @@ def check_redis_standalone_topology(instance, label_selector_master, label_selec
             print(f"Error: Topology intersection constraint violation! {error_info}. {error_info2}. topology_key: {topology_key}")
 
     # 主、从所在的机架不相同 (podAntiAffinity)
-    if HA_TOPOLOGY_LEVEL == ZONE_LEVEL or HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+    if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
         label_selector_master_shard_x = label_selector_master + f",redis.jdcloud.com/shard=shard-0"
         label_selector_replica_shard_x = label_selector_replica + f",redis.jdcloud.com/shard=shard-0"
         pods_redis_master_shard_x = get_pods_with_labels(label_selector_master_shard_x, namespace)
@@ -816,8 +805,8 @@ def get_mysql_instance():
     #         "instance_name": "digger-mysql-cluster",
     #     }]
     instances = []
-    kafka_list = get_cr_by_crd_name("mysqlclusters.mysql.presslabs.org")
-    for kafka in kafka_list:
+    instance_list = get_cr_by_crd_name("mysqlclusters.mysql.presslabs.org")
+    for kafka in instance_list:
         instance_name = kafka.get("metadata", {}).get("name", "")
         instance_namespace = kafka.get("metadata", {}).get("namespace", "")
 
@@ -1089,49 +1078,67 @@ def get_clickhouse_instance():
     return instances
 
 
+def is_need_check_service(check_service, service):
+    if check_service == SERVICE_ALL or check_service == service:
+        return True
+    return False
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='A script with command line arguments.')
-    parser.add_argument('-l', '--ha-level', type=str, help='定义更可用级别, 取值: zone、rack')
-    parser.add_argument('-s', '--paas-scope', type=str, help='paas组件范围, 取值: all、tenant、runtime, 默认为all')
+    parser.add_argument('-l', '--ha-level', type=str, help='高可用级别, 取值: zone、rack')
+    parser.add_argument('-s', '--service', type=str, help='service, 取值: all、rds、mongodb、clickhouse、elasticsearch、kafka、redis、etcd、zookeeper, 默认为all')
 
     args = parser.parse_args()
 
     # 高可用级别
     HA_TOPOLOGY_LEVEL = args.ha_level
     if HA_TOPOLOGY_LEVEL not in HA_TOPOLOGY_LEVEL_LIST:
-        print(f"Error: the passed-in parameter ha-level [{HA_TOPOLOGY_LEVEL}] is invalid, The supported values are {HA_TOPOLOGY_LEVEL_LIST}")
+        print(f"Error: the passed-in parameter 'ha-level' [{HA_TOPOLOGY_LEVEL}] is invalid, The supported values are {HA_TOPOLOGY_LEVEL_LIST}, Usage like 'python3 check_topology.py -l zone'")
         exit(1)
 
-    # paas组件范围
-    if args.paas_scope is not None:
-        PAAS_SCOPE = args.paas_scope
-        if PAAS_SCOPE not in PAAS_SCOPE_LIST:
-            print(f"Error: the passed-in parameter paas-scope [{PAAS_SCOPE}] is invalid, The supported values are {PAAS_SCOPE_LIST}")
+    # service
+    SERVICE_ALL = "all"
+    SERVICE_LIST = [SERVICE_ALL, "rds", "mongodb", "clickhouse", "elasticsearch", "kafka", "redis", "etcd", "zookeeper"]
+    SPECIFIED_CHECK_SERVICE = SERVICE_ALL
+    if args.service is not None:
+        SPECIFIED_CHECK_SERVICE = args.service
+        if SPECIFIED_CHECK_SERVICE not in SERVICE_LIST:
+            print(f"Error: the passed-in parameter 'service' [{SPECIFIED_CHECK_SERVICE}] is invalid, The supported values are {SERVICE_LIST}, Usage like 'python3 check_topology.py -l zone -s all'")
             exit(1)
 
     # 检查kafka topology
-    check_kafka_topology()
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "kafka"):
+        check_kafka_topology()
 
     # 检查redis topology
-    check_redis_topology()
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "redis"):
+        check_redis_topology()
 
-    # 检查es topology
-    check_es_topology()
+    # 检查elasticsearch topology
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "elasticsearch"):
+        check_es_topology()
 
     # 检查etcd topology
-    check_etcd_topology()
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "etcd"):
+        check_etcd_topology()
 
     # 检查zookeeper topology
-    check_zookeeper_topology()
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "zookeeper"):
+        check_zookeeper_topology()
 
     # 检查mysql topology
-    check_mysql_topology()
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "rds"):
+        check_mysql_topology()
 
     # 检查postgresql topology
-    check_postgresql_topology()
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "rds"):
+        check_postgresql_topology()
 
     # 检查mongodb topology
-    check_mongodb_topology()
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "mongodb"):
+        check_mongodb_topology()
 
     # 检查clickhouse topology
-    check_clickhouse_topology()
+    if is_need_check_service(SPECIFIED_CHECK_SERVICE, "clickhouse"):
+        check_clickhouse_topology()
