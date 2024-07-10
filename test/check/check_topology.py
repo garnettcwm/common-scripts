@@ -5,10 +5,19 @@ import json
 # 高可用级别
 TOPOLOGY_KEY_ZONE = "topology.jdos.io/zone"
 TOPOLOGY_KEY_RACK = "topology.jdos.io/rack"
-ZONE_LEVEL = "zone"
-RACK_LEVEL = "rack"
-HA_TOPOLOGY_LEVEL_LIST = [ZONE_LEVEL, RACK_LEVEL]
-HA_TOPOLOGY_LEVEL = ZONE_LEVEL
+TOPOLOGY_KEY_HOST = "topology.jdos.io/hostname"
+TOPOLOGY_KEY_K8s_HOST = "kubernetes.io/hostname"
+HA_LEVEL_ZONE = "zone"
+HA_LEVEL_RACK = "rack"
+HA_LEVEL_HOST = "host"
+HA_LEVEL_K8S_HOST = "k8s_host"
+# 整体高可用级别
+HA_LEVEL_LIST = [HA_LEVEL_ZONE, HA_LEVEL_RACK]
+HA_LEVEL = HA_LEVEL_ZONE
+
+# az内高可用级别
+HA_LEVEL_IN_AZ_LIST = [HA_LEVEL_RACK, HA_LEVEL_HOST, HA_LEVEL_K8S_HOST]
+HA_LEVEL_IN_AZ = HA_LEVEL_K8S_HOST
 
 # 全局变量，用于缓存 CRD 数据
 GLOBAL_CACHED_CRD_NAMES = None
@@ -275,14 +284,9 @@ def check_kafka_topology():
 
         label_selector_broker = f"app.kubernetes.io/name=kafka,app.kubernetes.io/instance={instance_name},strimzi.io/name={broker_name}"
         pods_kafka_broker = get_pods_with_labels(label_selector_broker, namespace)
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # check broker topology maxSkew
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_kafka_broker, TOPOLOGY_KEY_ZONE, label_selector_broker)
-            if not constraints_satisfied:
-                print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}. Label Selector: {selector_info}")
-
-            # check broker rack topology maxSkew
-            constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_kafka_broker, TOPOLOGY_KEY_RACK, label_selector_broker)
             if not constraints_satisfied:
                 print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}. Label Selector: {selector_info}")
 
@@ -292,7 +296,7 @@ def check_kafka_topology():
             if not constraints_satisfied:
                 print(f"Error: Node labels constraint violation! {error_info} contains required label {required_labels_info}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK or HA_LEVEL_IN_AZ == HA_LEVEL_RACK:
             # check broker rack topology maxSkew
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_kafka_broker, TOPOLOGY_KEY_RACK, label_selector_broker)
             if not constraints_satisfied:
@@ -302,12 +306,12 @@ def check_kafka_topology():
         zookeeper_name = instance_name + "-zookeeper"
         label_selector_zookeeper = f"app.kubernetes.io/name=kafka,app.kubernetes.io/instance={instance_name},strimzi.io/name={zookeeper_name}"
         pods_kafka_zookeeper = get_pods_with_labels(label_selector_zookeeper, namespace)
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_kafka_zookeeper, TOPOLOGY_KEY_ZONE, label_selector_zookeeper)
             if not constraints_satisfied:
                 print(f"Error: {constraint_topology_key} constraint violation! {error_info}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK or HA_LEVEL_IN_AZ == HA_LEVEL_RACK:
             constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_kafka_zookeeper, TOPOLOGY_KEY_RACK, label_selector_zookeeper)
             if not constraints_satisfied:
                 print(f"Error: {constraint_topology_key} constraint violation! {error_info}. Label Selector: {selector_info}")
@@ -410,14 +414,21 @@ def check_redis_standalone_topology(instance, label_selector_master, label_selec
     pods_redis_master = get_pods_with_labels(label_selector_master, namespace)
     pods_redis_replica = get_pods_with_labels(label_selector_replica, namespace)
 
-    if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+    if HA_LEVEL == HA_LEVEL_ZONE:
         # master、slave分布在不同AZ
         constraints_satisfied, error_info, error_info2, topology_key = check_topology_not_intersection_constraints(pods_redis_master, pods_redis_replica, TOPOLOGY_KEY_ZONE)
         if not constraints_satisfied:
             print(f"Error: Topology intersection constraint violation! {error_info}. {error_info2}. topology_key: {topology_key}")
 
+        # az内高可用级别为机架, 检查replica不能在同一机架上分布
+        if HA_LEVEL_IN_AZ == HA_LEVEL_RACK:
+            constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_redis_replica, TOPOLOGY_KEY_RACK, pods_redis_replica)
+            if not constraints_satisfied:
+                print(f"Error: {constraint_topology_key} constraint violation! {error_info}. Label Selector: {selector_info}")
+
+
     # 主、从所在的机架不相同 (podAntiAffinity)
-    if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+    if HA_LEVEL == HA_LEVEL_RACK:
         label_selector_master_shard_x = label_selector_master + f",redis.jdcloud.com/shard=shard-0"
         label_selector_replica_shard_x = label_selector_replica + f",redis.jdcloud.com/shard=shard-0"
         pods_redis_master_shard_x = get_pods_with_labels(label_selector_master_shard_x, namespace)
@@ -431,7 +442,7 @@ def check_redis_standalone_topology(instance, label_selector_master, label_selec
     # 集群版proxy的app.kubernetes.io/component=predixy
     label_selector_proxy = f"app.kubernetes.io/component=proxy,app.kubernetes.io/instance={instance_name}"
     pods_redis_proxy = get_pods_with_labels(label_selector_proxy, namespace)
-    if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+    if HA_LEVEL == HA_LEVEL_ZONE:
         # 可用区topology maxSkew检验
         constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_proxy, TOPOLOGY_KEY_ZONE, label_selector_proxy)
         if not constraints_satisfied:
@@ -443,7 +454,7 @@ def check_redis_standalone_topology(instance, label_selector_master, label_selec
         if not constraints_satisfied:
             print(f"Error: Node labels constraint violation! {error_info} contains required label {required_labels_info}. Label Selector: {selector_info}")
 
-    if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+    if HA_LEVEL == HA_LEVEL_RACK:
         # 机架topology maxSkew检验
         constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_proxy, TOPOLOGY_KEY_RACK, label_selector_proxy)
         if not constraints_satisfied:
@@ -463,13 +474,13 @@ def check_redis_replica_group_topology(instance, label_selector_master, label_se
     shard_num: int = len(pods_redis_master)
     print(f"Info: check redis {instance_name} shard num is {shard_num}")
 
-    if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+    if HA_LEVEL == HA_LEVEL_ZONE:
         # master、slave分布在不同AZ
         constraints_satisfied, error_info, error_info2, topology_key = check_topology_not_intersection_constraints(pods_redis_master, pods_redis_replica, TOPOLOGY_KEY_ZONE)
         if not constraints_satisfied:
             print(f"Error: Topology intersection constraint violation! {error_info}. {error_info2}. topology_key: {topology_key}")
 
-    if HA_TOPOLOGY_LEVEL == ZONE_LEVEL or HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+    if HA_LEVEL == HA_LEVEL_ZONE or HA_LEVEL == HA_LEVEL_RACK:
         # 保证所有不同分片的master在机架（或主机）级别均衡分布 (topologySpreadConstraints)
         constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_master, TOPOLOGY_KEY_RACK, label_selector_master)
         if not constraints_satisfied:
@@ -491,7 +502,7 @@ def check_redis_replica_group_topology(instance, label_selector_master, label_se
     pods_redis_proxy = get_pods_with_labels(label_selector_proxy, namespace)
     # 存在没有proxy的情况
     if len(pods_redis_proxy) != 0:
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # 可用区topology maxSkew检验
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_proxy, TOPOLOGY_KEY_ZONE, label_selector_proxy)
             if not constraints_satisfied:
@@ -503,7 +514,7 @@ def check_redis_replica_group_topology(instance, label_selector_master, label_se
             if not constraints_satisfied:
                 print(f"Error: Node labels constraint violation! {error_info} contains required label {required_labels_info}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # 机架topology maxSkew检验
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_proxy, TOPOLOGY_KEY_RACK, label_selector_proxy)
             if not constraints_satisfied:
@@ -523,7 +534,7 @@ def check_redis_cluster_topology(instance, label_selector_master, label_selector
     shard_num: int = len(pods_redis_master)
     print(f"Info: check redis {instance_name} shard num is {shard_num}")
 
-    if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+    if HA_LEVEL == HA_LEVEL_ZONE:
         # 保证所有不同分片的master AZ级别均衡分布
         constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_master, TOPOLOGY_KEY_ZONE, label_selector_master)
         if not constraints_satisfied:
@@ -539,7 +550,7 @@ def check_redis_cluster_topology(instance, label_selector_master, label_selector
             if not constraints_satisfied:
                 print(f"Error: Topology intersection constraint violation! {error_info}. {error_info2}. topology_key: {topology_key}")
 
-    if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+    if HA_LEVEL == HA_LEVEL_RACK:
         # 保证所有不同分片的master在机架（或主机）级别均衡分布
         constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_master, TOPOLOGY_KEY_RACK, label_selector_master)
         if not constraints_satisfied:
@@ -563,13 +574,13 @@ def check_redis_cluster_topology(instance, label_selector_master, label_selector
     pods_redis_proxy = get_pods_with_labels(label_selector_proxy, namespace)
     # 存在没有proxy的情况
     if len(pods_redis_proxy) != 0:
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # 可用区topology maxSkew检验
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_proxy, TOPOLOGY_KEY_ZONE, label_selector_proxy)
             if not constraints_satisfied:
                 print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # 机架topology maxSkew检验
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_redis_proxy, TOPOLOGY_KEY_RACK, label_selector_proxy)
             if not constraints_satisfied:
@@ -592,7 +603,7 @@ def check_es_topology():
         pods_es_master = get_pods_with_labels(label_selector_master, namespace)
         pods_es_node = get_pods_with_labels(label_selector_node, namespace)
 
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # check master topology skew
             # 存在没有master节点的集群
             if len(pods_es_master) != 0:
@@ -611,7 +622,7 @@ def check_es_topology():
             if not constraints_satisfied:
                 print(f"Error: Node labels constraint violation! {error_info} contains required label {required_labels_info}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # check master topology skew
             if len(pods_es_master) != 0:
                 constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_es_master, TOPOLOGY_KEY_RACK, label_selector_master)
@@ -671,13 +682,13 @@ def check_etcd_topology():
 
         label_selector_etcd_data = f"app.kubernetes.io/name=etcd-cluster,app.kubernetes.io/component=etcd-cluster,app.kubernetes.io/instance={instance_name}"
         pods_etcd_data = get_pods_with_labels(label_selector_etcd_data, namespace)
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # check etcd data topology maxSkew
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_etcd_data, TOPOLOGY_KEY_ZONE, label_selector_etcd_data)
             if not constraints_satisfied:
                 print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # check etcd data topology maxSkew
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_etcd_data, TOPOLOGY_KEY_RACK, label_selector_etcd_data)
             if not constraints_satisfied:
@@ -719,13 +730,13 @@ def check_zookeeper_topology():
 
         label_selector_zookeeper = f"app.kubernetes.io/name=zookeeper-cluster,app.kubernetes.io/component=zk,app.kubernetes.io/instance={instance_name}"
         pods_zookeeper = get_pods_with_labels(label_selector_zookeeper, namespace)
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # check zookeeper topology maxSkew
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_zookeeper, TOPOLOGY_KEY_ZONE, label_selector_zookeeper)
             if not constraints_satisfied:
                 print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # check zookeeper topology maxSkew
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_zookeeper, TOPOLOGY_KEY_RACK, label_selector_zookeeper)
             if not constraints_satisfied:
@@ -768,7 +779,7 @@ def check_mysql_topology():
         pods_mysql_master = get_pods_with_labels(label_selector_master, namespace)
         pods_mysql_replica = get_pods_with_labels(label_selector_node, namespace)
 
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # master、replica分布在不同AZ
             constraints_satisfied, error_info, error_info2, topology_key = check_topology_not_intersection_constraints(pods_mysql_master, pods_mysql_replica, TOPOLOGY_KEY_ZONE)
             if not constraints_satisfied:
@@ -785,7 +796,7 @@ def check_mysql_topology():
             if not constraints_satisfied:
                 print(f"Error: Node labels constraint violation! {error_info} contains required label {required_labels_info}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # 所有节点不能在同一rack
             constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_mysql_all, TOPOLOGY_KEY_RACK, label_selector_all)
             if not constraints_satisfied:
@@ -832,7 +843,7 @@ def check_postgresql_topology():
         pods_postgresql_master = get_pods_with_labels(label_selector_master, namespace)
         pods_postgresql_replica = get_pods_with_labels(label_selector_node, namespace)
 
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # master、replica分布在不同AZ
             constraints_satisfied, error_info, error_info2, topology_key = check_topology_not_intersection_constraints(pods_postgresql_master, pods_postgresql_replica, TOPOLOGY_KEY_ZONE)
             if not constraints_satisfied:
@@ -849,7 +860,7 @@ def check_postgresql_topology():
             if not constraints_satisfied:
                 print(f"Error: Node labels constraint violation! {error_info} contains required label {required_labels_info}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # 所有节点不能在同一rack
             constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_postgresql_all, TOPOLOGY_KEY_RACK, label_selector_all)
             if not constraints_satisfied:
@@ -917,13 +928,13 @@ def check_mongodb_replication_topology(instance, replica_sets):
         label_selector_replica_set = label_selector_mongodb + f",app.kubernetes.io/replset={replica_set_name}"
         pods_replica_set = get_pods_with_labels(label_selector_replica_set, namespace)
 
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # check mongod topology maxSkew
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_replica_set, TOPOLOGY_KEY_ZONE, label_selector_replica_set)
             if not constraints_satisfied:
                 print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # 所有节点不能在同一rack
             constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_replica_set, TOPOLOGY_KEY_RACK, label_selector_replica_set)
             if not constraints_satisfied:
@@ -943,13 +954,13 @@ def check_mongodb_sharding_topology(instance, replica_sets):
     label_selector_mongos = label_selector_mongodb + f",app.kubernetes.io/component=mongos"
     pods_mongos = get_pods_with_labels(label_selector_mongos, namespace)
 
-    if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+    if HA_LEVEL == HA_LEVEL_ZONE:
         # check mongod topology maxSkew
         constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_mongos, TOPOLOGY_KEY_ZONE, label_selector_mongos)
         if not constraints_satisfied:
             print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}. Label Selector: {selector_info}")
 
-    if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+    if HA_LEVEL == HA_LEVEL_RACK:
         # 所有节点不能在同一rack
         constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_mongos, TOPOLOGY_KEY_RACK, label_selector_mongos)
         if not constraints_satisfied:
@@ -964,13 +975,13 @@ def check_mongodb_sharding_topology(instance, replica_sets):
         label_selector_replica_set = label_selector_mongodb + f",app.kubernetes.io/replset={replica_set_name}"
         pods_replica_set = get_pods_with_labels(label_selector_replica_set, namespace)
 
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             # check mongod topology maxSkew
             constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_replica_set, TOPOLOGY_KEY_ZONE, label_selector_replica_set)
             if not constraints_satisfied:
                 print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             # 所有节点不能在同一rack
             constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_replica_set, TOPOLOGY_KEY_RACK, label_selector_replica_set)
             if not constraints_satisfied:
@@ -1026,14 +1037,14 @@ def check_clickhouse_topology():
         for shard_index in range(0, shard_num):
             label_selector_shard_x = label_selector_clickhouse + f",clickhouse.altinity.com/shard={shard_index}"
             pods_clickhouse_shard_x = get_pods_with_labels(label_selector_shard_x, namespace)
-            if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+            if HA_LEVEL == HA_LEVEL_ZONE:
                 # ck不分主从，同一shard在zone上均衡分布
 
                 constraints_satisfied, error_info, constraint_topology_key, selector_info = check_topology_skew_constraints(pods_clickhouse_shard_x, TOPOLOGY_KEY_ZONE, label_selector_shard_x)
                 if not constraints_satisfied:
                     print(f"Error: Topology skew constraint violation! {error_info}. constraint_topology_key: {constraint_topology_key}.Label Selector: {selector_info}")
 
-            if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+            if HA_LEVEL == HA_LEVEL_RACK:
                 # 所有节点不能在同一rack
                 constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_clickhouse_shard_x, TOPOLOGY_KEY_RACK, label_selector_shard_x)
                 if not constraints_satisfied:
@@ -1042,12 +1053,12 @@ def check_clickhouse_topology():
         # 检查zookeeper拓扑分布
         label_selector_zookeeper = f"app.kubernetes.io/name=clickhouse,app.kubernetes.io/component=cluster_zk,app.kubernetes.io/instance={instance_name}"
         pods_clickhouse_zookeeper = get_pods_with_labels(label_selector_zookeeper, namespace)
-        if HA_TOPOLOGY_LEVEL == ZONE_LEVEL:
+        if HA_LEVEL == HA_LEVEL_ZONE:
             constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_clickhouse_zookeeper, TOPOLOGY_KEY_ZONE, label_selector_zookeeper)
             if not constraints_satisfied:
                 print(f"Error: {constraint_topology_key} constraint violation! {error_info}. Label Selector: {selector_info}")
 
-        if HA_TOPOLOGY_LEVEL == RACK_LEVEL:
+        if HA_LEVEL == HA_LEVEL_RACK:
             constraints_satisfied, constraint_topology_key, error_info, selector_info = check_topology_constraints(pods_clickhouse_zookeeper, TOPOLOGY_KEY_RACK, label_selector_zookeeper)
             if not constraints_satisfied:
                 print(f"Error: {constraint_topology_key} constraint violation! {error_info}. Label Selector: {selector_info}")
@@ -1087,14 +1098,21 @@ def is_need_check_service(check_service, service):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='A script with command line arguments.')
     parser.add_argument('-l', '--ha-level', type=str, help='高可用级别, 取值: zone、rack')
+    parser.add_argument('-l2', '--ha-level-in-az', type=str, help='service, 取值: k8s_host、host、rack, 默认为k8s_host')
     parser.add_argument('-s', '--service', type=str, help='service, 取值: all、rds、mongodb、clickhouse、elasticsearch、kafka、redis、etcd、zookeeper, 默认为all')
 
     args = parser.parse_args()
 
     # 高可用级别
-    HA_TOPOLOGY_LEVEL = args.ha_level
-    if HA_TOPOLOGY_LEVEL not in HA_TOPOLOGY_LEVEL_LIST:
-        print(f"Error: the passed-in parameter 'ha-level' [{HA_TOPOLOGY_LEVEL}] is invalid, The supported values are {HA_TOPOLOGY_LEVEL_LIST}, Usage like 'python3 check_topology.py -l zone'")
+    HA_LEVEL = args.ha_level
+    if HA_LEVEL not in HA_LEVEL_LIST:
+        print(f"Error: 参数高可用级别[ha-level]不正确 [{HA_LEVEL}], The supported values are {HA_LEVEL_LIST}, 使用示例: 'python3 check_topology.py -l zone'")
+        exit(1)
+
+    # AZ内高可用级别
+    HA_LEVEL_IN_AZ = args.ha_level_in_az
+    if HA_LEVEL_IN_AZ not in HA_LEVEL_IN_AZ_LIST:
+        print(f"Error: 参数AZ内高可用级别[ha-level-in-az]不正确 [{HA_LEVEL_IN_AZ}] , 支持的参数列表为 {HA_LEVEL_IN_AZ_LIST}, 使用示例: 'python3 check_topology.py -l zone -l2 k8s_host'")
         exit(1)
 
     # service
@@ -1104,7 +1122,7 @@ if __name__ == "__main__":
     if args.service is not None:
         SPECIFIED_CHECK_SERVICE = args.service
         if SPECIFIED_CHECK_SERVICE not in SERVICE_LIST:
-            print(f"Error: the passed-in parameter 'service' [{SPECIFIED_CHECK_SERVICE}] is invalid, The supported values are {SERVICE_LIST}, Usage like 'python3 check_topology.py -l zone -s all'")
+            print(f"Error: the passed-in parameter [service] [{SPECIFIED_CHECK_SERVICE}] is invalid, The supported values are {SERVICE_LIST}, Usage like 'python3 check_topology.py -l zone -s all'")
             exit(1)
 
     # 检查kafka topology
