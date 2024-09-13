@@ -19,7 +19,6 @@ EXECUTE_MODE = EXECUTE_MODE_CV_IN_CLUSTER
 DRY_RUN = False
 DEBUG = False
 
-
 class ServiceStat:
     def __init__(self):
         self.use_expose_annotation = "unknown"
@@ -234,19 +233,23 @@ def stat_cvessel_cluster_service(k8sClient: K8sClient, clusterId: str):
     # 网络拉平环境, 按service是否有注解[jvessel.jdcloud.com/expose]设置
     if cniMode is not None and cniMode == "vlan":
         allServiceDict = get_all_services(k8sClient)
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(stat_f_service, k8sClient=k8sClient, clusterId=clusterId, serviceName=serviceName, service=service) for
-                       serviceName, service in allServiceDict.items()]
-            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        #     futures = [executor.submit(stat_f_service, k8sClient=k8sClient, clusterId=clusterId, serviceName=serviceName, service=service) for
+        #                serviceName, service in allServiceDict.items()]
+        #     results = [f.result() for f in concurrent.futures.as_completed(futures)]
+        for serviceName, service in allServiceDict.items():
+            stat_f_service(k8sClient = k8sClient, clusterId = clusterId, serviceName = serviceName, service = service)
 
 def stat_cvessel_cluster_release(k8sClient: K8sClient, clusterId: str):
     networkMode = CLUSTER_NETWORK_MODE_DICT.get(clusterId)
     if check_crd_existence(k8sClient=k8sClient, crd_name="releases.jvessel.jdcloud.com"):
         allReleaseDict = get_all_releases(k8sClient)
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(stat_f1, k8sClient=k8sClient, clusterId=clusterId, releaseName=releaseName, release=release) for
-                       releaseName, release in allReleaseDict.items()]
-            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        #     futures = [executor.submit(stat_f1, k8sClient=k8sClient, clusterId=clusterId, releaseName=releaseName, release=release) for
+        #                releaseName, release in allReleaseDict.items()]
+        #     results = [f.result() for f in concurrent.futures.as_completed(futures)]
+        for releaseName, release in allReleaseDict.items():
+            stat_f1(k8sClient = k8sClient, clusterId = clusterId, releaseName = releaseName, release = release)
     else:
         logging.warning(f"[{clusterId}] 未找到release crd")
 
@@ -260,10 +263,12 @@ def stat_cvessel_cluster_expose(k8sClient: K8sClient, clusterId: str):
     # 判断是否使用了服务暴露
     if check_crd_existence(k8sClient=k8sClient, crd_name="exposes.dlb.jdt.com"):
         allExposeDict = get_all_exposes(k8sClient)
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(stat_f2, k8sClient=k8sClient, clusterId=clusterId, exposeName=exposeName, expose=expose) for
-                       exposeName, expose in allExposeDict.items()]
-            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            # futures = [executor.submit(stat_f2, k8sClient=k8sClient, clusterId=clusterId, exposeName=exposeName, expose=expose) for
+            #            exposeName, expose in allExposeDict.items()]
+            # results = [f.result() for f in concurrent.futures.as_completed(futures)]
+            for exposeName, expose in allExposeDict.items():
+                stat_f2(k8sClient = k8sClient, clusterId = clusterId, exposeName = exposeName, expose = expose)
     else:
         logging.warning(f"[{clusterId}] 未找到expose crd")
 
@@ -315,17 +320,22 @@ def stat_cvessel_cluster_common(clusterId: str) -> K8sClient:
 
     # 设置集群的k8sClient
     CLUSTER_K8s_CLIENT_DICT.update({clusterId: k8sClient})
+
+    # 缓存所有crds
+    get_all_crds_names(k8sClient=k8sClient)
     return k8sClient
 
 def stat_cvessel_others(clusterId: str):
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = []
-        logging.info(f"[{clusterId}]开始统计release...")
-        futures.append(executor.submit(stat_cvessel_cluster_release, k8sClient=CLUSTER_K8s_CLIENT_DICT.get(clusterId), clusterId=clusterId))
+    futures = []
+    logging.info(f"[{clusterId}]开始统计release...")
+    # futures.append(global_executor.submit(stat_cvessel_cluster_release, k8sClient=CLUSTER_K8s_CLIENT_DICT.get(clusterId), clusterId=clusterId))
+    stat_cvessel_cluster_release(k8sClient = CLUSTER_K8s_CLIENT_DICT.get(clusterId), clusterId = clusterId)
 
-        logging.info(f"[{clusterId}]开始统计expose...")
-        futures.append(executor.submit(stat_cvessel_cluster_expose, k8sClient=CLUSTER_K8s_CLIENT_DICT.get(clusterId), clusterId=clusterId))
-        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+    logging.info(f"[{clusterId}]开始统计expose...")
+    # futures.append(global_executor.submit(stat_cvessel_cluster_expose, k8sClient=CLUSTER_K8s_CLIENT_DICT.get(clusterId), clusterId=clusterId))
+    #results = [f.result() for f in concurrent.futures.as_completed(futures)]
+    stat_cvessel_cluster_expose(k8sClient = CLUSTER_K8s_CLIENT_DICT.get(clusterId), clusterId = clusterId)
+
 
 def stat_cvessel(clusterIds: any):
     for clusterId in clusterIds:
@@ -336,11 +346,15 @@ def stat_cvessel(clusterIds: any):
         cniMode = CLUSTER_NETWORK_MODE_DICT.get(clusterId)
         # 网络拉平环境, 按service是否有注解[jvessel.jdcloud.com/expose]设置
         if cniMode is not None and cniMode == "vlan":
-            stat_cvessel_cluster_service(k8sClient=CLUSTER_K8s_CLIENT_DICT.get(clusterId), clusterId=clusterId)
+            logging.info(f"[{clusterId}]网络拉平环境, 暂时忽略service上的annotation")
+            # stat_cvessel_cluster_service(k8sClient=CLUSTER_K8s_CLIENT_DICT.get(clusterId), clusterId=clusterId)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(stat_cvessel_others, clusterId=clusterId) for clusterId in clusterIds]
-        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+    # 在全局范围内定义线程池
+    # global_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    # futures = [global_executor.submit(stat_cvessel_others, clusterId=clusterId) for clusterId in clusterIds]
+    # results = [f.result() for f in concurrent.futures.as_completed(futures)]
+    for clusterId in clusterIds:
+        stat_cvessel_others(clusterId = clusterId)
 
     for service_code in SERVICE_STAT_DICT:
         service_stat: ServiceStat = SERVICE_STAT_DICT.get(service_code)
