@@ -578,8 +578,10 @@ def get_clickhouse_envs(address: str, username: str, password: str, http_port: s
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='A script with command line arguments.')
-    parser.add_argument('--dry-run', action='store_true', help='simulate an migrate')
-    parser.add_argument('--debug', action='store_true', help='debug model')
+    # store_true Boolean值，选项会将参数的值解释为一个布尔值。如果参数存在于命令行上，值将是 True；否则，值将是 False。
+    # 使用 default=True，则可以使得在没有提供 --dry-run 参数时，仍然将其视为 True。
+    parser.add_argument('--dry-run', action='store_true', default=True, help='dry-run')
+    parser.add_argument('--debug', action='store_true', default=True, help='debug model')
     args = parser.parse_args()
     # 是否dry-run
     if args.dry_run is not None:
